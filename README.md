@@ -20,6 +20,24 @@
 | 记忆 | 自动存档，关掉再开继续养；离线期间也会慢慢变饿（速度减半，最多补 10 小时） |
 | 托盘 | 关闭窗口不算退出，可以从系统托盘随时叫回来 |
 
+## 下载现成的安装包（最省事）
+
+不用装 Python，下一个文件双击就能用：
+
+| 平台 | 文件 | 怎么装 |
+| --- | --- | --- |
+| Windows 10 / 11 | `DesktopPet-Windows.exe` | 单个 exe，双击运行，不用安装 |
+| macOS 11+ | `DesktopPet-macOS.zip` | 解压后把 `DesktopPet.app` 拖进「应用程序」 |
+
+**下载地址：<https://github.com/lindong629/mypet/releases/latest>**
+
+这两个文件由 GitHub Actions 自动构建：每次往 `master` 推代码，都会重新打包并覆盖 Releases 里的安装包（固定使用 `latest` 标签，所以上面的链接永久有效）；另外推一个 `v1.0.0` 这样的 tag，就会额外生成一个定格版本的 Release。
+
+> 安装包没有购买苹果 / 微软的代码签名证书，第一次打开会被系统拦一下，这是正常的：
+> - **macOS**：右键点 `DesktopPet.app` → 打开 → 再点「打开」。若提示「已损坏」，在终端执行
+>   `xattr -dr com.apple.quarantine /Applications/DesktopPet.app`
+> - **Windows**：出现「Windows 已保护你的电脑」时点「更多信息 → 仍要运行」。
+
 ## 在 Windows 上运行
 
 ### 方式一：直接运行（电脑上要先装 Python）
