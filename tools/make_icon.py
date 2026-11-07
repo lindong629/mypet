@@ -20,7 +20,8 @@ from pet import config, painter  # noqa: E402
 from pet.painter import Look  # noqa: E402
 
 SIZE = 1024
-ASSETS = os.path.join(ROOT, "assets")
+# 默认写到仓库的 assets/；设 ICON_OUT 可改到临时目录（CI 里做自检用，避免覆盖已提交的图标）
+ASSETS = os.environ.get("ICON_OUT") or os.path.join(ROOT, "assets")
 
 
 def render() -> QPixmap:

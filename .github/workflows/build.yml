@@ -22,7 +22,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller pillow
 
-      - name: 生成图标
+      # 图标已随仓库提交，这里只做一次诊断性渲染；失败不影响构建
+      - name: 图标自检（不阻塞）
+        continue-on-error: true
+        env:
+          ICON_OUT: ${{ runner.temp }}/icons
         run: python tools/make_icon.py
 
       - name: 打包 .app
@@ -70,7 +74,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt pyinstaller pillow
 
-      - name: 生成图标
+      # 直接用仓库里已生成的 ico，不再现算；下面这步只用于排查
+      - name: 图标自检（不阻塞）
+        continue-on-error: true
+        env:
+          ICON_OUT: ${{ runner.temp }}/icons
         run: python tools/make_icon.py
 
       - name: 打包 exe
