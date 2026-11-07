@@ -30,57 +30,86 @@ SETTINGS_FILE = data_dir() / "settings.json"
 
 
 # ---------------------------------------------------------------- 配色方案
-# body 主体 / dark 暗部与描边 / belly 肚子与口鼻 / ear 耳内 / blush 腮红 / accent 装饰
+# 按真实猫的毛色配置：
+#   fur 主体毛色 / fur_dark 暗部·条纹 / fur_light 胸腹口鼻的浅色毛
+#   ear 耳内 / nose 鼻镜 / eye 虹膜 / accent 界面强调色
+#   pattern: tabby 虎斑 / tuxedo 奶牛 / point 重点色 / solid 纯色
+# body/dark/belly/blush 是旧字段，保留给界面模块用
 PALETTES = {
-    "奶油橘": {
-        "body": "#FFCE8A", "dark": "#E9A75E", "belly": "#FFF3E0",
-        "ear": "#FFB3BC", "blush": "#FF8E9E", "accent": "#FF8A65",
+    "橘白猫": {
+        "fur": "#E1A463", "fur_dark": "#B1713A", "fur_light": "#FFF3E2",
+        "ear": "#E8A9A2", "nose": "#D98F8B", "eye": "#8FA84C",
+        "accent": "#E08A45", "pattern": "tabby",
     },
-    "薄荷奶绿": {
-        "body": "#A9E7C6", "dark": "#6DC59B", "belly": "#EAFFF5",
-        "ear": "#FFC1CC", "blush": "#FF9FB4", "accent": "#42B98B",
+    "狸花猫": {
+        "fur": "#A9875F", "fur_dark": "#6A5136", "fur_light": "#EBDCC3",
+        "ear": "#DCA79E", "nose": "#C98580", "eye": "#8A9F48",
+        "accent": "#A9793F", "pattern": "tabby",
     },
-    "樱粉团子": {
-        "body": "#FFC8DA", "dark": "#E895B2", "belly": "#FFF2F7",
-        "ear": "#FFA9C2", "blush": "#FF7C9E", "accent": "#F06292",
+    "蓝灰英短": {
+        "fur": "#A9B2BE", "fur_dark": "#7A8493", "fur_light": "#EEF1F5",
+        "ear": "#D8A9AB", "nose": "#BE8D90", "eye": "#E5A84B",
+        "accent": "#7E90A8", "pattern": "solid",
     },
-    "夜空灰蓝": {
-        "body": "#BACBEA", "dark": "#8DA3C9", "belly": "#F0F5FF",
-        "ear": "#FFC2D1", "blush": "#9FB3D9", "accent": "#7C9BE0",
+    "奶牛猫": {
+        "fur": "#565052", "fur_dark": "#2B2729", "fur_light": "#F8F3E9",
+        "ear": "#C99795", "nose": "#3C3235", "eye": "#B7CE72",
+        "accent": "#6E7684", "pattern": "tuxedo",
+    },
+    "布偶猫": {
+        "fur": "#F0E6D8", "fur_dark": "#A98C74", "fur_light": "#FFFCF6",
+        "ear": "#E0B4AF", "nose": "#DFA9A6", "eye": "#6FA9DE",
+        "accent": "#C9A98B", "pattern": "point",
     },
 }
 
-DEFAULT_PALETTE = "奶油橘"
+# 旧存档里的配色名做个映射，免得升级后变回默认
+PALETTE_ALIAS = {
+    "奶油橘": "橘白猫",
+    "薄荷奶绿": "蓝灰英短",
+    "樱粉团子": "布偶猫",
+    "夜空灰蓝": "奶牛猫",
+}
+
+DEFAULT_PALETTE = "橘白猫"
+
+# 补齐旧字段，界面里用 palette["body"] 之类的地方不用改
+for _name, _p in PALETTES.items():
+    _p.setdefault("body", _p["fur"])
+    _p.setdefault("dark", _p["fur_dark"])
+    _p.setdefault("belly", _p["fur_light"])
+    _p.setdefault("blush", "#F09B9B")
+    _p.setdefault("pattern", "tabby")
 
 # ---------------------------------------------------------------- 食物
 # effect 中的键与 PetState.stats 对应；clean 为负表示会弄脏
 FOODS = [
     {
-        "id": "fish", "name": "小鱼干", "icon": "fish",
+        "id": "fish", "color": "#E8A15C", "name": "小鱼干", "icon": "fish",
         "desc": "香脆可口，是团子的最爱",
         "effect": {"hunger": 16, "mood": 5, "clean": -2},
         "line": "小鱼干！咔嚓咔嚓～最喜欢了！",
     },
     {
-        "id": "milk", "name": "温牛奶", "icon": "milk",
+        "id": "milk", "color": "#F3EFE4", "name": "温牛奶", "icon": "milk",
         "desc": "暖暖的，喝完会有点困",
         "effect": {"hunger": 8, "energy": 8, "mood": 2},
         "line": "咕嘟咕嘟……好暖和，想睡觉了。",
     },
     {
-        "id": "cake", "name": "草莓蛋糕", "icon": "cake",
+        "id": "cake", "color": "#F0BFC8", "name": "草莓蛋糕", "icon": "cake",
         "desc": "甜食让人开心，但会弄脏胡子",
         "effect": {"hunger": 12, "mood": 12, "clean": -6, "energy": -2},
         "line": "甜甜的！嘴角沾到奶油了……嘿嘿。",
     },
     {
-        "id": "apple", "name": "脆苹果", "icon": "apple",
+        "id": "apple", "color": "#D9694F", "name": "脆苹果", "icon": "apple",
         "desc": "清脆健康，吃完清清爽爽",
         "effect": {"hunger": 10, "clean": 2, "mood": 3},
         "line": "咔嚓！好清脆，牙齿都变干净了。",
     },
     {
-        "id": "pudding", "name": "焦糖布丁", "icon": "pudding",
+        "id": "pudding", "color": "#E5C378", "name": "焦糖布丁", "icon": "pudding",
         "desc": "滑滑嫩嫩，心情变好",
         "effect": {"hunger": 9, "mood": 9},
         "line": "软软的……像云朵一样，好幸福。",
@@ -273,7 +302,9 @@ def save_settings(settings: dict) -> None:
 
 
 def palette_of(settings: dict) -> dict:
-    return PALETTES.get(settings.get("palette", DEFAULT_PALETTE), PALETTES[DEFAULT_PALETTE])
+    name = settings.get("palette", DEFAULT_PALETTE)
+    name = PALETTE_ALIAS.get(name, name)
+    return PALETTES.get(name, PALETTES[DEFAULT_PALETTE])
 
 
 def app_font_family() -> list[str]:

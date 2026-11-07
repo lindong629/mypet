@@ -40,9 +40,9 @@ def render() -> QPixmap:
 
     # 宠物本体，留出内边距
     inner = pad + int(SIZE * 0.055)
-    look = Look(stage=2, emotion="happy", breath=-0.3, tail=-0.5, t=2.0)
+    look = Look(stage=3, emotion="happy", breath=-0.3, tail=-0.5, tail_curl=0.4, t=2.0)
     painter.draw_pet(p, QRectF(inner, inner, SIZE - inner * 2, SIZE - inner * 2),
-                     look, config.PALETTES["奶油橘"])
+                     look, config.PALETTES["橘白猫"])
     p.end()
     return pm
 

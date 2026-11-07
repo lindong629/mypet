@@ -13,7 +13,7 @@
 | 能力 | 说明 |
 | --- | --- |
 | 陪伴 | 透明无边框窗口，始终浮在桌面上，可以拖到任何位置，也会自己慢慢走动 |
-| 互动 | 左键摸头、按住拖动搬家、双击打开聊天、右键打开功能菜单 |
+| 互动 | 左键摸头、按住拖动搬家、双击打开聊天、右键打开功能菜单；每个互动都有自己的姿势和道具，不是原地抖两下 |
 | 养成 | 饱食度 / 精力 / 清洁度 / 心情四项属性随时间变化，照顾得好就长得快 |
 | 成长 | 等级、经验、亲密度、四个成长阶段、八个成就 |
 | 对话 | 内置 200+ 条台词的本地词库，**不联网也能聊**；填了 API Key 后可用大模型 |
@@ -34,39 +34,7 @@
 双击 **`打包exe.bat`**，几分钟后在 `dist\DesktopPet.exe` 得到单文件程序。
 把这个 exe 拷到任何 Windows 电脑上双击即可，不需要装 Python。
 
-> PyInstaller 不能跨系统打包。在 Mac 上想拿 exe，用下面的 GitHub Actions。
-
-## 在 macOS 上运行
-
-```bash
-python3 -m venv .venv
-./.venv/bin/pip install -r requirements.txt
-./.venv/bin/python main.py
-```
-
-打包成 .app：
-
-```bash
-./.venv/bin/pip install pyinstaller pillow
-./.venv/bin/python tools/make_icon.py
-./.venv/bin/python -m PyInstaller --noconfirm --windowed --name DesktopPet \
-  --icon assets/DesktopPet.icns --osx-bundle-identifier com.lindong.desktoppet main.py
-open dist/DesktopPet.app
-```
-
-## 自动出包（GitHub Actions）
-
-`.github/workflows/build.yml` 会在每次 push 时自动构建两个平台的产物：
-
-| 平台 | 产物 | 拿法 |
-| --- | --- | --- |
-| macOS | `DesktopPet.app`（zip） | Actions → 对应 run → Artifacts |
-| Windows | `DesktopPet.exe`（单文件） | 同上 |
-
-也可以本地触发：仓库页面 → Actions → build → Run workflow。
-打 tag（如 `v1.0.0`）同样会触发。
-
-> Mac 和 Windows 的包必须在对应系统上构建，这就是用 CI 的原因。
+> 打包必须在 Windows 上进行，PyInstaller 不能跨系统打包。
 
 ## 怎么玩
 
@@ -80,7 +48,34 @@ open dist/DesktopPet.app
 
 **照顾它**：饿了右键喂点东西（小鱼干、牛奶、蛋糕、苹果、布丁）；脏了洗澡；精力低了让它睡一觉；心情差了陪它玩一会儿或者聊两句。
 
+### 每个互动都有对应的动作和道具
+
+不是原地抖两下，而是真的摆出姿势、拿出东西来：
+
+![互动动作](preview/actions.png)
+
+| 互动 | 猫在做什么 | 道具 |
+| --- | --- | --- |
+| 摸头 | 微微低头往上顶、眯眼、飞机耳、呼噜到身体发抖 | 一只从画面上方伸下来的手 |
+| 喂食 | 前身塌下去、脑袋低到盆口、张嘴一小口一小口吃 | 地上的饭盆，食物随进度变少 |
+| 陪玩·毛线球 | 压低身体伏地 → 蹦起来扑，两只前爪往前抓 | 毛线球滚过留下的一条线 |
+| 陪玩·逗猫棒 | 抬头盯着羽毛、伸爪去够 | 从右上角伸进来的逗猫棒 |
+| 陪玩·躲猫猫 | 原地转圈、歪头 | — |
+| 洗澡 | 缩在盆里、湿身（毛贴服变深）、洗完甩毛 | 澡盆 + 水面 + 泡沫 + 海绵 |
+| 睡觉 | 缩成一团（趴卧），尾巴绕到身前，冒 Zzz | — |
+| 拎起来 | 四脚悬空、腿垂着晃、尾巴夹紧、瞳孔放大 | — |
+| 舔毛 | 抬起一只前爪按在腮边、伸舌头 | — |
+| 打哈欠 / 伸懒腰 | 张大嘴、四肢往前抻 | — |
+
+它自己闲着的时候也会舔毛、打哈欠、发呆看别处。
+
 **关于成长**：刚开始是一颗蛋，连续摸三次就会破壳。等级越高，样子会变（幼崽戴围兜、少年戴铃铛项圈、成年戴小皇冠），体型也会略微变大。
+
+### 五种真实毛色
+
+![毛色](preview/palettes.png)
+
+橘白、狸花、蓝灰英短、奶牛、布偶，花纹（虎斑 / 纯色 / 奶牛 / 重点色）分别画法，设置里可以随时换。
 
 **它不会死**：属性最低只会让它没精神、闹脾气，不会消失，可以放心让孩子养。
 
@@ -143,10 +138,20 @@ open dist/DesktopPet.app
 | --- | --- |
 | 台词、回复逻辑 | `pet/dialogue.py` 里的 `INTENTS`（关键词 → 台词） |
 | 加食物 | `pet/config.py` 里的 `FOODS`（`icon` 可复用现有图标名） |
-| 配色 | `pet/config.py` 里的 `PALETTES` |
-| 长啥样 | `pet/painter.py` 里的 `_draw_cat`、`_draw_eye`、`_draw_accessory` |
+| 配色 | `pet/config.py` 里的 `PALETTES`（`pattern` 决定花纹画法） |
+| 长啥样 | `pet/painter.py`：`_geo` 管骨骼比例、`_body_path` 管轮廓、`_draw_head` 管脸 |
+| 互动姿势 | `pet/pet_window.py` 的 `_update_action` / `_act_*`，配合 `pet/painter.py` 的 `Look` 参数 |
+| 道具 | `pet/props.py`（饭盆、毛线球、逗猫棒、浴盆、手） |
 | 饿得多快 | 设置里的「养成节奏」，或 `pet/state.py` 里的 `DECAY` |
 | 面板样式 | 各 `*_panel.py` 底部的 `setStyleSheet` |
+
+画完之后想看效果，不用一遍遍开程序：
+
+```bash
+python tools/preview.py    # 姿态 / 毛色 / 表情 / 成长阶段对照图
+python tools/actions.py    # 12 个互动动作对照图
+python tools/make_icon.py  # 重新生成 .icns / .ico
+```
 
 ## 目录结构
 
@@ -163,19 +168,19 @@ DesktopPet/
 │  ├─ dialogue.py          本地对话引擎 + 大模型提示词
 │  ├─ llm.py               OpenAI 兼容接口（urllib，后台线程）
 │  ├─ painter.py           宠物矢量绘制（无图片素材）
-│  ├─ effects.py           爱心 / Zzz / 星星 / 泡泡粒子
+│  ├─ props.py             互动道具：饭盆、毛线球、逗猫棒、浴盆、摸头的手
+│  ├─ effects.py           爱心 / Zzz / 星星 / 泡泡 / 水滴 / 灰尘粒子
 │  ├─ bubble.py            头顶对话气泡
-│  ├─ pet_window.py        主窗口：动画循环、拖拽、菜单、托盘
+│  ├─ pet_window.py        主窗口：动画循环、动作状态机、拖拽、菜单、托盘
 │  ├─ chat_panel.py        聊天面板
 │  ├─ status_panel.py      状态面板
 │  ├─ settings_panel.py    设置面板
 │  └─ platform_utils.py    Windows 开机自启
 ├─ tools/
-│  ├─ preview.py           把各种姿态渲染成对照图
-│  ├─ make_icon.py         生成 .icns / .ico 图标
+│  ├─ preview.py           姿态 / 毛色 / 表情 / 成长阶段对照图
+│  ├─ actions.py           互动动作对照图
+│  ├─ make_icon.py         生成 .icns / .ico
 │  └─ smoke.py             离屏跑一遍全流程 + 截图（开发自测）
-├─ assets/                 应用图标（png / icns / ico）
-├─ .github/workflows/      自动构建 macOS .app 与 Windows .exe
 └─ preview/                预览图
 ```
 

@@ -67,6 +67,36 @@ class Effects:
                       ttl=random.uniform(0.6, 1.1), size=random.uniform(2, 3.6),
                       color=QColor("#E2B07A"))
 
+    def drops(self, n: int = 3) -> None:
+        for _ in range(n):
+            self._add(kind="drop", x=random.uniform(70, 130), y=random.uniform(120, 172),
+                      vx=random.uniform(-26, 26), vy=random.uniform(-46, -10),
+                      ttl=random.uniform(0.5, 0.9), size=random.uniform(1.6, 2.8),
+                      color=QColor(150, 208, 238, 225))
+
+    def dust(self, n: int = 6) -> None:
+        for _ in range(n):
+            self._add(kind="dust", x=100 + random.uniform(-26, 26), y=175,
+                      vx=random.uniform(-34, 34), vy=random.uniform(-18, -4),
+                      ttl=random.uniform(0.5, 0.9), size=random.uniform(2.5, 5.0),
+                      color=QColor(206, 196, 180, 170))
+
+    def crumb_at(self, x: float, y: float, color: QColor) -> None:
+        self._add(kind="crumb", x=x, y=y, vx=random.uniform(-18, 18),
+                  vy=random.uniform(-16, 2), ttl=random.uniform(0.4, 0.8),
+                  size=random.uniform(1.3, 2.2), color=color)
+
+    def shake_sparkles(self, n: int = 8) -> None:
+        for _ in range(n):
+            ang = random.uniform(-math.pi, 0)
+            self._add(kind="sparkle", x=100 + random.uniform(-30, 30),
+                      y=random.uniform(110, 160),
+                      vx=math.cos(ang) * random.uniform(30, 70),
+                      vy=math.sin(ang) * random.uniform(20, 50),
+                      ttl=random.uniform(0.5, 0.9), size=random.uniform(2.5, 5.5),
+                      color=QColor(random.choice(["#BFE3F5", "#FFFFFF", "#D8F0FA"])),
+                      rot=random.uniform(0, 90))
+
     def sweat(self) -> None:
         self._add(kind="bubble", x=140, y=76, vx=6, vy=6, ttl=1.0, size=5.5,
                   color=QColor(160, 210, 240, 220))
@@ -81,7 +111,8 @@ class Effects:
             it["life"] += dt
             if it["life"] >= it["ttl"]:
                 continue
-            it["vy"] += (26 if it["kind"] in ("crumb",) else -4) * dt
+            gravity = 120 if it["kind"] == "drop" else (34 if it["kind"] == "crumb" else -4)
+            it["vy"] += gravity * dt
             it["x"] += it["vx"] * dt
             it["y"] += it["vy"] * dt
             alive.append(it)
@@ -128,6 +159,21 @@ class Effects:
                 p.setPen(Qt.NoPen)
                 p.setBrush(QColor(255, 255, 255, int(200 * alpha)))
                 p.drawEllipse(QRectF(-s * 0.55, -s * 0.6, s * 0.4, s * 0.4))
+            elif kind == "drop":
+                col = QColor(it["color"])
+                col.setAlphaF(alpha * 0.9)
+                p.setPen(Qt.NoPen)
+                p.setBrush(col)
+                p.save()
+                p.rotate(14)
+                p.drawEllipse(QRectF(-s * 0.55, -s, s * 1.1, s * 2.0))
+                p.restore()
+            elif kind == "dust":
+                col = QColor(it["color"])
+                col.setAlphaF(alpha * 0.55)
+                p.setPen(Qt.NoPen)
+                p.setBrush(col)
+                p.drawEllipse(QRectF(-s, -s * 0.8, s * 2, s * 1.6))
             elif kind == "crumb":
                 col = QColor(it["color"])
                 col.setAlphaF(alpha)

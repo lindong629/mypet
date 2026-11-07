@@ -15,7 +15,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon, QWidget
 
-from . import config, dialogue, painter
+from . import config, dialogue, painter, props
 from .bubble import Bubble
 from .chat_panel import ChatPanel
 from .effects import Effects
@@ -56,11 +56,12 @@ class PetWindow(QWidget):
         self._blink_start = -1.0
         self._emotion = "normal"
         self._emotion_until = 0.0
-        self._anim_kind = ""
-        self._anim_until = 0.0
+        self._action: dict | None = None
         self._spawn_acc = 0.0
         self._hop_start = -1.0
-        self._hop_dir = 1
+        self._wet = 0.0
+        self._idle_next = time.time() + random.uniform(20, 40)
+        self._shake_until = 0.0
 
         self._dragging = False
         self._press_global = QPoint()
@@ -195,6 +196,14 @@ class PetWindow(QWidget):
         rect = QRectF(OFF_X * s, OFF_Y * s, CANVAS * s, CANVAS * s)
         painter.draw_pet(p, rect, self.look, self.palette)
 
+        # 互动道具（饭盆、毛线球等）画在宠物前面
+        if self.look.prop:
+            p.save()
+            p.translate(OFF_X * s, OFF_Y * s)
+            p.scale(s, s)
+            props.draw_props(p, self.look, self.palette)
+            p.restore()
+
         p.save()
         p.translate(OFF_X * s, OFF_Y * s)
         p.scale(s, s)
@@ -213,9 +222,42 @@ class PetWindow(QWidget):
         lk.stage = self.state.stage
         lk.egg_crack = self.state.egg_crack
 
+        # 姿态参数每帧归零，由下面的动作重新设置
+        lk.pose = "sit"
+        lk.head_down = 0.0
+        lk.head_dx = 0.0
+        lk.head_dy = 0.0
+        lk.head_tilt = 0.0
+        lk.ear_back = 0.0
+        lk.leg_l = 0.0
+        lk.leg_r = 0.0
+        lk.paw_fwd = 0.0
+        lk.walk = 0.0
+        lk.tongue = 0.0
+        lk.hand = 0.0
+        lk.purr = 0.0
+        lk.prop = ""
+        lk.extra = {}
+        lk.mouth = 0.0
+        lk.eating = False
+        lk.washing = False
+        lk.tail_up = 0.0
+        lk.tail_curl = 0.0
+        lk.squash = 0.0
+        lk.lean = 0.0
+        lk.bob = 0.0
+
+        if now < getattr(self, "_squash_until", 0.0):
+            lk.squash = 0.16
+
+        # 洗完澡慢慢变干
+        if self._wet > 0.01:
+            self._wet = max(0.0, self._wet - dt * 0.05)
+        lk.wet = self._wet
+
         # 呼吸
-        speed = 0.75 if self.state.sleeping else 1.0
-        lk.breath = math.sin(self._t * 1.7 * speed)
+        speed = 0.62 if self.state.sleeping else 1.0
+        lk.breath = math.sin(self._t * 1.6 * speed)
 
         # 眨眼
         if self._blink_start > 0:
@@ -232,11 +274,11 @@ class PetWindow(QWidget):
             lk.blink = 0.0
 
         # 尾巴
-        lk.tail = math.sin(self._t * (0.9 if self.state.sleeping else 1.5))
+        lk.tail = math.sin(self._t * (0.7 if self.state.sleeping else 1.35))
 
-        # 跳跃
+        # 跳跃（动作里置位 _hop_start）
         if self._hop_start > 0:
-            k = (now - self._hop_start) / 0.45
+            k = (now - self._hop_start) / 0.42
             if k >= 1:
                 self._hop_start = -1.0
                 lk.jump = 0.0
@@ -245,10 +287,8 @@ class PetWindow(QWidget):
         else:
             lk.jump = 0.0
 
-        # 走动
-        self._update_wander(dt)
-
         # 眼睛跟随鼠标
+        lk.sleeping = self.state.sleeping
         if self.state.sleeping:
             lk.look_x, lk.look_y = 0.0, 0.0
         else:
@@ -268,26 +308,27 @@ class PetWindow(QWidget):
         if now > self._emotion_until:
             self._emotion = self._base_emotion()
         lk.emotion = self._emotion
-        lk.sleeping = self.state.sleeping
 
-        # 动作动画
-        self._update_action_anim(now, dt)
-        if not self._anim_kind:
-            lk.mouth = 0.0
-            lk.eating = False
-            lk.washing = False
+        # 动作：会覆盖姿态、情绪、道具
+        self._update_action(now, dt)
+
+        # 走动（走路会覆盖腿的摆动）
+        self._update_wander(dt)
 
         # 睡觉冒 Z
-        if self.state.sleeping and not self._anim_kind:
+        if self.state.sleeping and not self._action:
             self._spawn_acc += dt
             if self._spawn_acc > 1.1:
                 self._spawn_acc = 0.0
                 self.effects.zzz()
+                lk.tail = math.sin(self._t * 0.7) * 0.7
 
         self.effects.update(dt)
         self.update()
 
+    # ---------------------------------------------------------------- 动作
     def _base_emotion(self) -> str:
+        """没在演动作时，按属性算出来的情绪基线。"""
         s = self.state.stats
         if not self.state.hatched:
             return "normal"
@@ -303,31 +344,257 @@ class PetWindow(QWidget):
             return "happy"
         return "normal"
 
-    def _update_action_anim(self, now: float, dt: float) -> None:
-        if not self._anim_kind:
-            return
-        if now > self._anim_until:
-            self._anim_kind = ""
-            return
+    @staticmethod
+    def _ramp(a: float, b: float, x: float) -> float:
+        """0→1 的平滑过渡。"""
+        if x <= a:
+            return 0.0
+        if x >= b:
+            return 1.0
+        t = (x - a) / (b - a)
+        return t * t * (3 - 2 * t)
+
+    def _start_action(self, kind: str, dur: float, **data) -> None:
+        self._action = {"kind": kind, "start": time.time(), "dur": dur, **data}
+        self._wander_target = None
+        self._spawn_acc = 0.0
+
+    def _update_action(self, now: float, dt: float) -> None:
         lk = self.look
-        if self._anim_kind == "eat":
-            lk.eating = True
-            lk.mouth = 0.55 + 0.45 * math.sin(self._t * 16)
+
+        # 被拎起来：四脚悬空、飞机耳、瞳孔放大
+        if self._dragging and self._moved:
+            lk.pose = "dangle"
+            lk.emotion = "scared"
+            lk.ear_back = 0.85
+            lk.tail_curl = 0.9
+            lk.leg_l = 0.45
+            lk.leg_r = 0.55
+            return
+
+        # 睡觉：趴卧、收爪、闭眼
+        if self.state.sleeping:
+            lk.pose = "loaf"
+            lk.emotion = "sleepy"
+            lk.tail_curl = 0.55
+            lk.breath = math.sin(self._t * 0.95)
+            return
+
+        act = self._action
+        if act is None:
+            if now >= self._idle_next and self._can_idle():
+                self._random_idle()
+                act = self._action
+            if act is None:
+                return
+
+        p = (now - act["start"]) / max(0.02, act["dur"])
+        if p >= 1.0:
+            kind = act["kind"]
+            self._action = None
+            if kind == "wash":
+                self._wet = max(self._wet, 0.8)
+                self.effects.shake_sparkles(8)
+            if kind == "pat":
+                self.set_emotion(act.get("emotion", "happy"), 2.0)
+            return
+
+        kind = act["kind"]
+        if kind == "eat":
+            self._act_eat(p, dt, act)
+        elif kind == "play":
+            self._act_play(p, dt, act)
+        elif kind == "wash":
+            self._act_wash(p, dt)
+        elif kind == "pat":
+            self._act_pat(p)
+        elif kind == "groom":
+            self._act_groom(p)
+        elif kind == "yawn":
+            self._act_yawn(p)
+        elif kind == "stretch":
+            self._act_stretch(p)
+        elif kind == "look":
+            self._act_look(p)
+
+    # ---- 吃东西：低头对着饭盆，一口一口嚼
+    def _act_eat(self, p: float, dt: float, act: dict) -> None:
+        lk = self.look
+        lk.emotion = "eat"
+        down = self._ramp(0.0, 0.18, p) * (1.0 - self._ramp(0.88, 1.0, p))
+        lk.pose = "eat" if down > 0.2 else "sit"
+        lk.head_down = down * 0.35
+        lk.head_dy = down * 3.0
+        lk.prop = "bowl"
+        lk.prop_t = min(1.0, p * 1.05)
+        lk.extra = {"food_color": act.get("food_color", "#E8A15C")}
+        if 0.14 < p < 0.9:
+            lk.mouth = 0.35 + 0.5 * abs(math.sin(self._t * 12))
             self._spawn_acc += dt
-            if self._spawn_acc > 0.22:
+            if self._spawn_acc > 0.24:
                 self._spawn_acc = 0.0
-                self.effects.crumbs(3)
-        elif self._anim_kind == "wash":
-            lk.washing = True
-            lk.emotion = "dizzy"
-            self._spawn_acc += dt
-            if self._spawn_acc > 0.18:
-                self._spawn_acc = 0.0
-                self.effects.bubbles(3)
-            lk.lean = math.sin(self._t * 14) * 0.35
-        elif self._anim_kind == "play":
-            lk.emotion = "happy"
-            self._hop_start = self._hop_start if self._hop_start > 0 else now
+                self.effects.crumb_at(100 + random.uniform(-6, 6), 166,
+                                      QColor(act.get("food_color", "#E8A15C")))
+        lk.tail = math.sin(self._t * 2.4) * 0.8
+
+    # ---- 玩耍：三种玩具有三种动作
+    def _act_play(self, p: float, dt: float, act: dict) -> None:
+        lk = self.look
+        game = act.get("game", "yarn")
+        lk.emotion = "happy"
+
+        if game == "yarn":
+            lk.prop = "yarn"
+            # 毛线球被拨来拨去
+            bx = math.sin(p * math.pi * 2.4) * 34
+            lk.extra = {"yarn_x": bx}
+            lk.prop_t = p
+            if p < 0.22:
+                lk.pose = "crouch"
+                lk.head_down = 0.55
+                lk.tail_up = 1.0
+                lk.tail = math.sin(self._t * 9) * 0.7
+            elif p < 0.52:
+                k = (p - 0.22) / 0.30
+                lk.jump = math.sin(math.pi * k) * 0.75
+                lk.paw_fwd = math.sin(math.pi * k)
+                lk.head_down = 0.35
+                lk.leg_l = 0.7
+                lk.leg_r = 0.55
+            else:
+                lk.paw_fwd = max(0.0, math.sin((p - 0.52) * 18)) * 0.8
+                lk.leg_r = max(0.0, math.sin((p - 0.52) * 18)) * 0.8
+                lk.head_down = 0.25
+            if p > 0.3 and int(p * 10) % 3 == 0:
+                self._spawn_acc += dt
+                if self._spawn_acc > 0.3:
+                    self._spawn_acc = 0.0
+                    self.effects.sparkles(3)
+
+        elif game == "wand":
+            lk.prop = "wand"
+            ang = math.sin(p * math.pi * 3.2) * 26
+            lk.extra = {"wand_angle": ang}
+            lk.prop_t = p
+            lk.head_dx = clamp(ang * 0.16, -6, 6)
+            lk.head_down = 0.12 + 0.16 * abs(math.sin(p * math.pi * 3.2))
+            bat = math.sin(p * math.pi * 6.4)
+            lk.leg_l = max(0.0, bat) * 0.9
+            lk.leg_r = max(0.0, -bat) * 0.9
+            if p > 0.35 and p < 0.65:
+                lk.jump = math.sin((p - 0.35) / 0.3 * math.pi) * 0.5
+            lk.tail = math.sin(self._t * 7) * 0.9
+
+        else:  # 捉迷藏：东张西望然后蹦一下
+            lk.head_dx = math.sin(p * math.pi * 3.4) * 7
+            lk.head_tilt = math.sin(p * math.pi * 2.2) * 0.6
+            lk.look_x = math.sin(p * math.pi * 3.4) * 0.9
+            lk.ear_back = -0.15
+            if 0.62 < p < 0.82:
+                lk.jump = math.sin((p - 0.62) / 0.2 * math.pi) * 0.6
+                if int(p * 40) % 4 == 0:
+                    self.effects.sparkles(2)
+            lk.tail_up = 0.6
+
+    # ---- 洗澡：湿身、抖毛、泡沫
+    def _act_wash(self, p: float, dt: float) -> None:
+        lk = self.look
+        lk.prop = "tub"
+        lk.prop_t = p
+        self._wet = min(1.0, 0.15 + p * 1.2)
+        lk.wet = self._wet
+        lk.washing = True
+        lk.emotion = "dizzy" if p < 0.75 else "happy"
+        if p > 0.12:
+            lk.lean = math.sin(self._t * 17) * 0.55
+            lk.squash = 0.10
+            lk.head_down = 0.3
+        if p > 0.8:
+            # 抖掉水：高频小幅摆动
+            lk.lean = math.sin(self._t * 34) * 0.7
+            lk.ear_back = 0.5
+        self._spawn_acc += dt
+        if self._spawn_acc > 0.14:
+            self._spawn_acc = 0.0
+            self.effects.bubbles(2)
+            self.effects.drops(2)
+
+    # ---- 摸头：手落下来，头往手心里顶
+    def _act_pat(self, p: float) -> None:
+        lk = self.look
+        lk.emotion = "happy" if p < 0.75 else "love"
+        down = math.sin(min(1.0, p) * math.pi)
+        lk.hand = min(1.0, p * 1.6)
+        lk.head_dy = down * 3.4
+        lk.head_down = down * 0.18
+        lk.ear_back = 0.22 * down
+        lk.purr = down
+        lk.tail = math.sin(self._t * 3.2) * 0.9
+        lk.tail_up = 0.25
+        lk.leg_l = lk.leg_r = 0.0
+
+    # ---- 舔毛
+    def _act_groom(self, p: float) -> None:
+        lk = self.look
+        lk.emotion = "happy"
+        lk.leg_r = self._ramp(0.0, 0.2, p) * (1 - self._ramp(0.85, 1.0, p))
+        lk.head_down = 0.22
+        lk.head_tilt = 0.5
+        if 0.2 < p < 0.85:
+            lk.tongue = 0.5 + 0.5 * math.sin(self._t * 9)
+            lk.mouth = 0.12
+        lk.tail = math.sin(self._t * 1.1) * 0.6
+
+    # ---- 打哈欠
+    def _act_yawn(self, p: float) -> None:
+        lk = self.look
+        lk.emotion = "sleepy"
+        lk.mouth = math.sin(min(1.0, p) * math.pi) * 1.0
+        lk.head_dy = -1.5 * math.sin(min(1.0, p) * math.pi)
+        lk.eye_open = 1.0 - 0.85 * math.sin(min(1.0, p) * math.pi)
+        lk.ear_back = 0.3 * math.sin(min(1.0, p) * math.pi)
+
+    # ---- 伸懒腰
+    def _act_stretch(self, p: float) -> None:
+        lk = self.look
+        k = math.sin(min(1.0, p) * math.pi)
+        lk.pose = "stretch"
+        lk.head_down = 0.35 * k
+        lk.tail_up = 0.8 * k
+        lk.emotion = "sleepy"
+        lk.paw_fwd = 0.5 * k
+        lk.squash = -0.06 * k
+
+    # ---- 东张西望
+    def _act_look(self, p: float) -> None:
+        lk = self.look
+        lk.head_tilt = math.sin(p * math.pi * 2) * 0.7
+        lk.head_dx = math.sin(p * math.pi * 2) * 3.5
+        lk.look_x = math.sin(p * math.pi * 2) * 0.9
+        lk.emotion = "normal"
+
+    def _can_idle(self) -> bool:
+        return (self.isVisible() and not self.state.sleeping
+                and not self._dragging and not self._action
+                and not self.bubble.isVisible()
+                and not (self._chat_panel and self._chat_panel.isVisible()))
+
+    def _random_idle(self) -> None:
+        self._idle_next = time.time() + random.uniform(24, 55)
+        kind = random.choices(
+            ["groom", "look", "yawn", "stretch", "tail"],
+            weights=[34, 30, 12, 10, 14])[0]
+        if kind == "groom":
+            self._start_action("groom", random.uniform(2.6, 3.8))
+        elif kind == "look":
+            self._start_action("look", random.uniform(2.0, 3.0))
+        elif kind == "yawn":
+            self._start_action("yawn", 1.5)
+        elif kind == "stretch":
+            self._start_action("stretch", 1.8)
+        else:
+            self.look.tail_up = 0.9
+            self.look.tail_curl = 1.0
 
     # ---------------------------------------------------------------- 走动
     def _update_wander(self, dt: float) -> None:
@@ -356,16 +623,18 @@ class PetWindow(QWidget):
             diff = self._wander_target - x
             if abs(diff) < 2:
                 self._wander_target = None
-                self.look.lean *= 0.8
                 return
-            step = math.copysign(min(abs(diff), 42 * dt), diff)
+            speed = 34.0
+            step = math.copysign(min(abs(diff), speed * dt), diff)
             nx = int(round(x + step))
             self.move(nx, self.y())
-            self.look.lean = clamp(step * 0.4, -1, 1)
-            self.look.bob = abs(math.sin(self._t * 9)) * 2.2
-        else:
-            self.look.lean *= 0.85
-            self.look.bob *= 0.9
+            # 走路：前腿交替、身体起伏、头随步点轻轻点头
+            self.look.walk = 1.0
+            self.look.walk_phase += dt * 8.5
+            self.look.bob = abs(math.sin(self.look.walk_phase)) * 1.8
+            self.look.head_dy = math.sin(self.look.walk_phase * 2) * 0.9
+            self.look.lean = clamp(step * 0.35, -1, 1)
+            self.look.tail = math.sin(self.look.walk_phase) * 0.5
 
     # ---------------------------------------------------------------- 互动
     def _speak(self, text: str, emotion: str = "normal", duration: int = 0) -> None:
@@ -420,10 +689,7 @@ class PetWindow(QWidget):
             return
         res = self.state.feed(food)
         if res.get("ok"):
-            self._anim_kind = "eat"
-            self._anim_until = time.time() + 2.0
-            self._spawn_acc = 0.0
-            self.effects.crumbs(5)
+            self._start_action("eat", 2.6, food_color=food.get("color", "#E8A15C"))
         self._after_action(res)
 
     def play(self, action_id: str | None = None) -> None:
@@ -431,28 +697,29 @@ class PetWindow(QWidget):
         action = next((a for a in pool if a["id"] == action_id), random.choice(pool))
         res = self.state.play(action)
         if res.get("ok"):
-            self._anim_kind = "play"
-            self._anim_until = time.time() + 1.6
-            self._hop_start = time.time()
-            self.effects.hearts(5)
+            game = action.get("id", "yarn")
+            if game not in ("yarn", "wand", "hide"):
+                game = "yarn"
+            dur = {"yarn": 2.8, "wand": 3.2, "hide": 2.6}[game]
+            self._start_action("play", dur, game=game)
+            self.effects.hearts(4)
         self._after_action(res)
 
     def wash(self) -> None:
         res = self.state.wash()
         if res.get("ok"):
-            self._anim_kind = "wash"
-            self._anim_until = time.time() + 2.4
-            self._spawn_acc = 0.0
+            self._start_action("wash", 3.2)
             self.effects.bubbles(10)
         self._after_action(res)
 
     def pat(self) -> None:
         res = self.state.pat()
         if res.get("ok"):
-            self._hop_start = time.time()
             if self.state.hatched:
-                self.effects.hearts(3 if res.get("emotion") != "love" else 6)
+                self._start_action("pat", 0.95, emotion=res.get("emotion", "happy"))
+                self.effects.hearts(3 if res.get("emotion") != "love" else 6, 100, 62)
             else:
+                self._hop_start = time.time()
                 self.effects.sparkles(6)
         self._after_action(res)
 
@@ -749,9 +1016,13 @@ class PetWindow(QWidget):
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.LeftButton:
+            was_drag = self._dragging and self._moved
             self._dragging = False
             self.look.bob = 0.0
             self.look.lean = 0.0
+            if was_drag:
+                self._squash_until = time.time() + 0.22
+                self.effects.dust(7)
             if self._moved:
                 self._clamp_to_screen()
                 self.state.pos = {"x": self.x(), "y": self.y()}
