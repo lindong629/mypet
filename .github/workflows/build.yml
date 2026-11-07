@@ -184,9 +184,11 @@ jobs:
             TARGET=(--target "$SHA")
           fi
 
+          # 无论是正式版还是滚动版，都标成 Latest：
+          # 谁最后构建，/releases/latest 就指向谁，下载页永远不会停留在旧包上
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" \
-              --title "$TITLE" --notes-file notes.md
+              --title "$TITLE" --notes-file notes.md --latest
           else
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
               --title "$TITLE" --notes-file notes.md \
